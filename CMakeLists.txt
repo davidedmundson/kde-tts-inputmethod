@@ -17,10 +17,17 @@ include(ECMInstallIcons)
 
 find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Widgets)
 
+add_executable(testapp
+    test.cpp
+    processor.cpp
+)
+
 add_executable(audiosource
-    audiosource.cpp audiosource.h
+    audiosource.cpp
+    processor.cpp
     main.cpp
 )
+
 
 # target_include_directories(audiosource PUBLIC
 #     ../shared
@@ -32,5 +39,13 @@ target_link_libraries(audiosource PUBLIC
     Qt::Multimedia
     Qt::Widgets
     ${CMAKE_SOURCE_DIR}/whisper.cpp/build/libwhisper.a
+)
 
+
+target_link_libraries(testapp PUBLIC
+    Qt::Core
+    Qt::Gui
+    Qt::Multimedia
+    Qt::Widgets
+    ${CMAKE_SOURCE_DIR}/whisper.cpp/build/libwhisper.a
 )

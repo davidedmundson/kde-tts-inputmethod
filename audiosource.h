@@ -12,7 +12,7 @@
 #include <QWidget>
 #include <QScopedPointer>
 
-class TextInferrer;
+class Processor;
 
 class InputTest : public QMainWindow
 {
@@ -33,8 +33,7 @@ private:
     QComboBox *m_deviceBox = nullptr;
 
     QScopedPointer<QAudioInput> m_audioInput;
-    TextInferrer* m_textInferrer;
-    QAudioFormat m_format;
+    Processor* m_textInferrer;
 };
 
 #endif // AUDIOINPUT_H

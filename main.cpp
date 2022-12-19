@@ -1,9 +1,18 @@
-// Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
-
 #include "audiosource.h"
 
 #include <QtWidgets/QApplication>
+
+// TODO
+// Speech to qDebug DONE!
+// Create full sentences, merging strings together
+// Populate a TextField directly, editing the contents at runtime
+// Show Aleix
+// wayland integration
+// move TextInferrer::process to thread(?)
+// QtQuick UI with volume indication
+// Model downloader
+// cmake stuff
+// Tune
 
 int main(int argv, char **args)
 {
