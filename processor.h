@@ -3,6 +3,12 @@
 #include <QIODevice>
 #include <QAudioFormat>
 
+class AudioBuffer : public QVector<float>
+{
+public:
+    quint64 duration();
+};
+
 class Processor : public QIODevice
 {
     Q_OBJECT
@@ -19,8 +25,12 @@ public:
 Q_SIGNALS :
     void textChanged();
 
-  private:
+private:
+    bool detectNoise(uint);
+    void handleNewData();
+
     QString m_text;
-    QVector<float> m_buffer;
+    AudioBuffer m_buffer;
+    bool m_recording = false;
     struct whisper_context * ctx;
 };

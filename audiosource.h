@@ -10,6 +10,7 @@
 #include <QPushButton>
 #include <QSlider>
 #include <QWidget>
+#include <QTextEdit>
 #include <QScopedPointer>
 
 class Processor;
@@ -31,6 +32,7 @@ private slots:
 private:
     qreal calculateLevel(const char*, qint64 len) const;
     QComboBox *m_deviceBox = nullptr;
+    QTextEdit *m_textEdit = nullptr;
 
     QScopedPointer<QAudioInput> m_audioInput;
     Processor* m_textInferrer;

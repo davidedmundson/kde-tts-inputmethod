@@ -37,18 +37,23 @@ void InputTest::initializeWindow()
     connect(m_deviceBox, QOverload<int>::of(&QComboBox::activated), this, &InputTest::deviceChanged);
     layout->addWidget(m_deviceBox);
 
+    // TODO add a VU meter in here too
+
+    m_textEdit = new QTextEdit(this);
+    layout->addWidget(m_textEdit);
+    connect(m_textInferrer, &Processor::textChanged, this, [this]() {
+        m_textEdit->setText(m_textInferrer->text());
+    });
+
     window->setLayout(layout);
 
     setCentralWidget(window);
     window->show();
-    qDebug() << "DAVE!";
 }
 
 
 void InputTest::initializeAudio(const QAudioDeviceInfo &deviceInfo)
 {
-    qDebug() << "DAVE222!";
-
     QAudioFormat format = Processor::requiredFormat();
 
     if (!deviceInfo.isFormatSupported(format)) {

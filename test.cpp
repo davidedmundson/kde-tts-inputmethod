@@ -17,11 +17,14 @@ int main(int argc, char **argv)
     audioDecoder.setSourceFilename("/home/david/projects/personal/audiosource/whisper.cpp/samples/jfk.wav");
     qDebug() << audioDecoder.audioFormat();
 
-    QObject::connect(&audioDecoder, &QAudioDecoder::stateChanged, [&app](QAudioDecoder::State state) {
-        qDebug() << state;
+    QObject::connect(&audioDecoder, &QAudioDecoder::stateChanged, [&p, &app](QAudioDecoder::State state) {
+        if (state == QAudioDecoder::StoppedState) {
+            // write 8 seconds of silence so we keep processing
+            QByteArray silenceBuffer(8 * 16000 * 2, 0);
+            p.write(silenceBuffer.data(), silenceBuffer.count());
+        }
     });
 
-    // TODO read snippet at a time to make it realtime
     QObject::connect(&audioDecoder, &QAudioDecoder::bufferReady, [&p, &audioDecoder]() {
 
         while(audioDecoder.bufferAvailable()) {
@@ -36,6 +39,10 @@ int main(int argc, char **argv)
                 p.write((char*)&floatValue, sizeof(float));
             }
         }
+    });
+
+    QObject::connect(&p, &Processor::textChanged, [&p]() {
+        qDebug() << "Text out" << p.text();
     });
 
     audioDecoder.start();
