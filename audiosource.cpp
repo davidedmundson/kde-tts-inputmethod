@@ -14,6 +14,55 @@
 #include <QAudioInput>
 #include <qendian.h>
 
+
+class RenderArea : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit RenderArea(QWidget *parent = nullptr);
+
+    void setLevel(qreal value);
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
+private:
+    qreal m_level = 0;
+};
+
+RenderArea::RenderArea(QWidget *parent)
+    : QWidget(parent)
+{
+    setBackgroundRole(QPalette::Base);
+    setAutoFillBackground(true);
+
+    setMinimumHeight(30);
+    setMinimumWidth(200);
+}
+
+void RenderArea::paintEvent(QPaintEvent * /* event */)
+{
+    QPainter painter(this);
+
+    painter.setPen(Qt::black);
+
+    const QRect frame = painter.viewport() - QMargins(10, 10, 10, 10);
+    painter.drawRect(frame);
+    if (m_level == 0.0)
+        return;
+
+    const int pos = qRound(qreal(frame.width() - 1) * m_level);
+    painter.fillRect(frame.left() + 1, frame.top() + 1,
+                     pos, frame.height() - 1, Qt::red);
+}
+
+void RenderArea::setLevel(qreal value)
+{
+    m_level = value;
+    update();
+}
+
 InputTest::InputTest()
 {
     m_textInferrer = new Processor(this);
@@ -34,10 +83,15 @@ void InputTest::initializeWindow()
             m_deviceBox->addItem(deviceInfo.deviceName(), QVariant::fromValue(deviceInfo));
     }
 
+
+    auto vuMeter = new RenderArea(this);
+    connect(m_textInferrer, &Processor::activeVolumeChanged, this, [vuMeter](qreal level) {
+        vuMeter->setLevel(level);
+    });
+    layout->addWidget(vuMeter);
+
     connect(m_deviceBox, QOverload<int>::of(&QComboBox::activated), this, &InputTest::deviceChanged);
     layout->addWidget(m_deviceBox);
-
-    // TODO add a VU meter in here too
 
     m_textEdit = new QTextEdit(this);
     layout->addWidget(m_textEdit);

@@ -24,6 +24,7 @@ public:
 
 Q_SIGNALS :
     void textChanged();
+    void activeVolumeChanged(qreal value);
 
 private:
     bool detectNoise(uint);

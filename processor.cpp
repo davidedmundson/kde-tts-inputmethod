@@ -86,6 +86,7 @@ bool Processor::detectNoise(uint duration)
     }
     energy /= nSamples;
 
+    Q_EMIT activeVolumeChanged(energy);
     static float threshold = 0.3;
     return energy > threshold;
 }
