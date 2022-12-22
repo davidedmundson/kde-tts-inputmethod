@@ -22,8 +22,12 @@ public:
 
     static QAudioFormat requiredFormat();
 
+    bool recording() const;
+    bool processing() const;
+
 Q_SIGNALS :
     void textChanged();
+    void stateChanged();
     void activeVolumeChanged(qreal value);
 
 private:
@@ -33,5 +37,6 @@ private:
     QString m_text;
     AudioBuffer m_buffer;
     bool m_recording = false;
+    bool m_processing = false;
     struct whisper_context * ctx;
 };

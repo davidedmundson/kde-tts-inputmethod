@@ -15,7 +15,7 @@ include(ECMPoQmTools)
 include(ECMInstallIcons)
 
 
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Widgets)
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Widgets Concurrent)
 
 add_executable(testapp
     test.cpp
@@ -38,6 +38,7 @@ target_link_libraries(audiosource PUBLIC
     Qt::Gui
     Qt::Multimedia
     Qt::Widgets
+    Qt::Concurrent
     ${CMAKE_SOURCE_DIR}/whisper.cpp/build/libwhisper.a
 )
 
@@ -47,5 +48,6 @@ target_link_libraries(testapp PUBLIC
     Qt::Gui
     Qt::Multimedia
     Qt::Widgets
+    Qt::Concurrent
     ${CMAKE_SOURCE_DIR}/whisper.cpp/build/libwhisper.a
 )

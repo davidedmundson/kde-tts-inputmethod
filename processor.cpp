@@ -5,6 +5,11 @@
 #include <QDebug>
 #include <QGuiApplication>
 
+#include <QThreadPool>
+#include <QFuture>
+#include <QFutureWatcher>
+#include <QtConcurrent>
+
 #include "whisper.cpp/whisper.h"
 
 #include <cmath>
@@ -44,6 +49,16 @@ QAudioFormat Processor::requiredFormat()
     format.setSampleType(QAudioFormat::Float);
     format.setByteOrder(QAudioFormat::LittleEndian);
     return format;
+}
+
+bool Processor::recording() const
+{
+    return m_recording;
+}
+
+bool Processor::processing() const
+{
+    return m_processing;
 }
 
 qint64 Processor::readData(char *, qint64 )
@@ -87,6 +102,7 @@ bool Processor::detectNoise(uint duration)
     energy /= nSamples;
 
     Q_EMIT activeVolumeChanged(energy);
+    qDebug() << energy;
     static float threshold = 0.3;
     return energy > threshold;
 }
@@ -117,33 +133,33 @@ void Processor::handleNewData()
     // DAVE, new plan. Not done yet
 
     // When not recording
-        // front buffer is less than sample size
-        // front buffer and back buffer. Each take a sample
-        // If low energy - swap buffers and continue
-        // If high energy append backBuffer, frontBuffer as m_buffer and flag as recording
+    // front buffer is less than sample size
+    // front buffer and back buffer. Each take a sample
+    // If low energy - swap buffers and continue
+    // If high energy append backBuffer, frontBuffer as m_buffer and flag as recording
     // When recording:
-        // still build front buffers, but in handleData we append them to m_buffer now
-        // after N seconds of silence, stop recording
+    // still build front buffers, but in handleData we append them to m_buffer now
+    // after N seconds of silence, stop recording
     // Optimise afterwards
 
     if (!m_recording) {
         if (detectNoise(startVoiceTimer)) {
             qDebug() << "start voice";
             m_recording = true;
+            Q_EMIT stateChanged();
         } else {
             // TODO, keep the last 100ms or so?
             m_buffer.clear();
             return;
         }
     } else {
-        if (!detectNoise(endVoicePauseTimer)) {
+        // if we're still processing, keep recording till we hit a next break
+        // TODO, something clevererererr
+        if (!detectNoise(endVoicePauseTimer) && !m_processing) {
             qDebug() << "end voice " << m_buffer.duration();
             m_recording = false;
-            if (m_buffer.size() <= 2000) {
-                // was probably just noise. There's scope for being much cleverer in a lot of places here
-                m_buffer.clear();
-                return;
-            }
+            Q_EMIT stateChanged();
+
             process();
         }
     }
@@ -174,60 +190,64 @@ qint64 Processor::writeData(const char *data, qint64 len)
 
 void Processor::process()
 {
-    QElapsedTimer bench;
-    qDebug() << "proces start";
-    bench.start();
+    m_processing = true;
+    Q_EMIT stateChanged();
 
-    whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
 
-    wparams.print_progress   = false;
-    wparams.print_special    = false;
-    wparams.print_realtime   = false;
-    wparams.translate        = false;
-    wparams.no_context       = true;
-    wparams.single_segment   = true;
-    wparams.max_tokens       = 32;
-    wparams.language         = "en";
-    wparams.n_threads        = QThread::idealThreadCount();
-    // wparams.audio_ctx        = params.audio_ctx;
-    wparams.speed_up         = true;
+    auto futureWatcher = new QFutureWatcher<QString>(this);
 
-    // tokens from the last itteration
-    // wparams.prompt_tokens    = params.no_context ? nullptr : prompt_tokens.data();
-    // wparams.prompt_n_tokens  = params.no_context ? 0       : prompt_tokens.size();
-
-    qDebug() << "processing " << m_buffer.duration() << "ms of audio";
-
-    if (whisper_full(ctx, wparams, (const float*) m_buffer.data(), m_buffer.size()) != 0) {
-        qApp->exit(6);
-    }
-
-    const int n_segments = whisper_full_n_segments(ctx);
-    for (int i = 0; i < n_segments; ++i) {
-        const char * text = whisper_full_get_segment_text(ctx, i);
-
-        // TODO be cleverer with newlines and such
-        // maybe Processor should emit blobs of text + timestamps
-        // then another class is responsible for building a text document
-        m_text += text;
-
+    connect(futureWatcher, &QFutureWatcher<int>::finished, this, [this, futureWatcher]() {
+        m_text += futureWatcher->result();
         Q_EMIT textChanged();
-        //                      else {
-        //                        const int64_t t0 = whisper_full_get_segment_t0(ctx, i);
-        //                        const int64_t t1 = whisper_full_get_segment_t1(ctx, i);
+        m_processing = false;
+        Q_EMIT stateChanged();
+    });
 
-        //                        printf ("[%s --> %s]  %s\n", to_timestamp(t0).c_str(), to_timestamp(t1).c_str(), text);
+    // this abuses threads somewhat
+    // need a mutex over ctx deletion
+    QFuture<QString> future = QtConcurrent::run(QThreadPool::globalInstance(), [this](AudioBuffer buffer) {
+            QElapsedTimer bench;
+            bench.start();
+            qDebug() << "proces start";
 
-        //                        if (params.fname_out.length() > 0) {
-        //                            fout << "[" << to_timestamp(t0) << " --> " << to_timestamp(t1) << "]  " << text << std::endl;
-        //                        }
+            whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+
+            wparams.print_progress   = false;
+            wparams.print_special    = false;
+            wparams.print_realtime   = false;
+            wparams.translate        = false;
+            wparams.no_context       = true;
+            wparams.single_segment   = true;
+            wparams.max_tokens       = 32;
+            wparams.language         = "en";
+            wparams.n_threads        = QThread::idealThreadCount();
+            // wparams.audio_ctx        = params.audio_ctx;
+            wparams.speed_up         = true;
+
+            // tokens from the last itteration
+            // wparams.prompt_tokens    = params.no_context ? nullptr : prompt_tokens.data();
+            // wparams.prompt_n_tokens  = params.no_context ? 0       : prompt_tokens.size();
+
+            qDebug() << "processing " << buffer.duration() << "ms of audio";
+
+            if (whisper_full(ctx, wparams, (const float*) buffer.data(), buffer.size()) != 0) {
+            qApp->exit(6);
+}
+
+            QString output;
+            const int n_segments = whisper_full_n_segments(ctx);
+            for (int i = 0; i < n_segments; ++i) {
+        const char * text = whisper_full_get_segment_text(ctx, i);
+        // TODO we can get blobs with timestamps here
+        output += text;
     }
-
-    m_buffer.clear();
-
-    // maybe take the last N milliseconds and prepend to buffer
-
     qDebug() << "Done" << bench.elapsed();
+    return output;
+}, m_buffer);
+
+futureWatcher->setFuture(future);
+
+m_buffer.clear();
 }
 
 QString Processor::text() const

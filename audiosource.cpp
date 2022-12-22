@@ -12,6 +12,7 @@
 #include <QVBoxLayout>
 #include <QAudioDeviceInfo>
 #include <QAudioInput>
+#include <QLabel>
 #include <qendian.h>
 
 
@@ -89,6 +90,19 @@ void InputTest::initializeWindow()
         vuMeter->setLevel(level);
     });
     layout->addWidget(vuMeter);
+
+    auto stateLabel = new QLabel(this);
+    connect(m_textInferrer, &Processor::stateChanged, this, [stateLabel, this]() {
+        QString text;
+        if (m_textInferrer->recording()) {
+            text += "Recording ";
+        }
+        if (m_textInferrer->processing()) {
+            text += "Processing";
+        }
+        stateLabel->setText(text);
+    });
+    layout->addWidget(stateLabel);
 
     connect(m_deviceBox, QOverload<int>::of(&QComboBox::activated), this, &InputTest::deviceChanged);
     layout->addWidget(m_deviceBox);
