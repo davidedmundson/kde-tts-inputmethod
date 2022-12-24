@@ -122,8 +122,9 @@ bool AudioProcessor::detectNoise()
  *
  * TODO:
  *  - understand energy_all variable in vad_simple in whisper. Seems to make it relative volume compared to buffer?
- *  - add the high pass filter?
- *
+ *  - make more inline?
+ *  - Ideally AudioProcessor would "pull" rather than be "pushed to". QAudioDevice supports this, but in Qt5 it didn't seem to work
+ *  - Then we can pull one chunk at a time and process without copies
  *  - port to libfvad?
  */
 void AudioProcessor::handleNewData()

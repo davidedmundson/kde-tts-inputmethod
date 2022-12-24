@@ -14,8 +14,10 @@ include(KDECompilerSettings NO_POLICY_SCOPE)
 include(ECMPoQmTools)
 include(ECMInstallIcons)
 
+find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Widgets)
 
-find_package(Qt5 REQUIRED COMPONENTS Core Gui Multimedia Widgets Concurrent)
+set(BUILD_SHARED_LIBS FALSE)
+add_subdirectory(whisper.cpp)
 
 add_executable(testapp
     test.cpp
@@ -28,18 +30,12 @@ add_executable(audiosource
     main.cpp
 )
 
-
-# target_include_directories(audiosource PUBLIC
-#     ../shared
-# )
-
 target_link_libraries(audiosource PUBLIC
     Qt::Core
     Qt::Gui
     Qt::Multimedia
     Qt::Widgets
-    Qt::Concurrent
-    ${CMAKE_SOURCE_DIR}/whisper.cpp/build/libwhisper.a
+    libwhisper.a
 )
 
 
@@ -48,6 +44,5 @@ target_link_libraries(testapp PUBLIC
     Qt::Gui
     Qt::Multimedia
     Qt::Widgets
-    Qt::Concurrent
-    ${CMAKE_SOURCE_DIR}/whisper.cpp/build/libwhisper.a
+    libwhisper.a
 )

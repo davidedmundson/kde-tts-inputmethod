@@ -15,7 +15,6 @@
 #include <QLabel>
 #include <qendian.h>
 
-
 class RenderArea : public QWidget
 {
     Q_OBJECT
