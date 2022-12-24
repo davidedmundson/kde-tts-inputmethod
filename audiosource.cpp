@@ -126,6 +126,11 @@ void InputTest::initializeAudio(const QAudioDeviceInfo &deviceInfo)
     if (!deviceInfo.isFormatSupported(format)) {
         qWarning() << "Default format not supported - trying to use nearest";
         format = deviceInfo.nearestFormat(format);
+        qDebug() << "should be:";
+        qDebug() << AudioProcessor::requiredFormat();
+
+        qDebug() << "using:";
+        qDebug() << format;
     }
 
     m_audioInput.reset(new QAudioInput(deviceInfo, format));

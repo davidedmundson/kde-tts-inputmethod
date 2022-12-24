@@ -11,6 +11,7 @@
 #include <QMutexLocker>
 
 #include <QStandardPaths>
+#include <QFileInfo>
 
 #include "whisper.cpp/whisper.h"
 
@@ -25,6 +26,9 @@ static const int s_sampleSizeMs = 200;
 
 // after this much silence we trigger processing
 static const int s_silenceTime = 2000;
+
+// consider recording after this much "energy".
+static const float s_recordingThreshold = 0.015;
 
 quint64 AudioBuffer::duration() const
 {
@@ -106,9 +110,13 @@ bool AudioProcessor::detectNoise()
     }
     energy /= m_sampleBuffer.count();
 
-    Q_EMIT activeVolumeChanged(energy);
-    static float threshold = 0.015;
-    return energy > threshold;
+    // weirdly I need this on my desktop, but not my laptop...
+    energy *= 100;
+
+    qDebug() << energy;
+
+    Q_EMIT activeVolumeChanged(energy);;
+    return energy > s_recordingThreshold;
 }
 
 
@@ -178,7 +186,14 @@ SpeechProcessor::SpeechProcessor(QObject *parent)
     : QObject(parent)
 {
     //whisper stuff
-    QByteArray model = "models/ggml-small.en.bin";
+    const QString path = QStandardPaths::locate(QStandardPaths::GenericDataLocation, "whisper", QStandardPaths::LocateDirectory);
+    const QString fileName = "ggml-small.en.bin";
+
+    if (!QFileInfo::exists(path + "/" + fileName)) {
+        qFatal("Could not find model. Please save https://huggingface.co/datasets/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin to ~/.local/share/whipser.");
+    }
+
+    QByteArray model = QString(path + "/" + fileName).toLatin1();
     // TODO verify file exists
     // TODO language
     // TODO download the right model automatically
