@@ -8,39 +8,55 @@
 #include <QThreadPool>
 #include <QFuture>
 #include <QFutureWatcher>
-#include <QtConcurrent>
+#include <QMutexLocker>
+
+#include <QStandardPaths>
 
 #include "whisper.cpp/whisper.h"
 
 #include <cmath>
 
-#define WHISPER_SAMPLE_RATE_MS WHISPER_SAMPLE_RATE / 1000;
+#define WHISPER_SAMPLE_RATE_MS (WHISPER_SAMPLE_RATE / 1000)
 
-// Tuning
-// from stream:
-//int32_t step_ms    = 3000;
-//int32_t length_ms  = 10000;
-///    const int n_samples_keep = 0.2*WHISPER_SAMPLE_RATE; // amount to use between searches
+class SpeechProcessor;
 
-quint64 AudioBuffer::duration()
+// size of chunk to analyze for new audio
+static const int s_sampleSizeMs = 200;
+
+// after this much silence we trigger processing
+static const int s_silenceTime = 2000;
+
+quint64 AudioBuffer::duration() const
 {
     return (size() * 1000.0) / WHISPER_SAMPLE_RATE;
 }
 
-Processor::Processor(QObject *parent)
+
+AudioProcessor::AudioProcessor(QObject *parent)
     : QIODevice(parent)
 {
-    //whisper stuff
-    QByteArray model = "models/ggml-small.en.bin";
-    // TODO verify file exists
-    // TODO language
-    // TODO download the right model automatically
-    ctx = whisper_init(model.data());
+    // TODO move this out to the caller rather than having AudioProcessor abstract
+    // then make the caller set up a chain  of AudioInput -> AudioProcessor -> SpeechProcessor -> DocumentHandler
+
+    qRegisterMetaType<AudioBuffer>();
+
+    auto thread = new QThread(this);
+    m_speechProcessor = new SpeechProcessor(nullptr); // can't use a parent with a thread, what's the normal pattern here?
+    m_speechProcessor->moveToThread(thread);
+
+    connect(this, &AudioProcessor::audioChunkRecorded, m_speechProcessor, &SpeechProcessor::enqueue, Qt::DirectConnection);
+    connect(m_speechProcessor, &SpeechProcessor::textFound, this, [this](const QString &text) {
+        m_text += text;
+        Q_EMIT textChanged();
+    });
+    connect(m_speechProcessor, &SpeechProcessor::busyChanged, this, &AudioProcessor::stateChanged);
+
+    thread->start();
 
     open(QIODevice::WriteOnly);
 }
 
-QAudioFormat Processor::requiredFormat()
+QAudioFormat AudioProcessor::requiredFormat()
 {
     QAudioFormat format;
     format.setSampleRate(WHISPER_SAMPLE_RATE);
@@ -51,24 +67,24 @@ QAudioFormat Processor::requiredFormat()
     return format;
 }
 
-bool Processor::recording() const
+bool AudioProcessor::recording() const
 {
     return m_recording;
 }
 
-bool Processor::processing() const
+bool AudioProcessor::processing() const
 {
-    return m_processing;
+    return m_speechProcessor->busy();
 }
 
-qint64 Processor::readData(char *, qint64 )
+qint64 AudioProcessor::readData(char *, qint64 )
 {
     return 0;
 }
 
 
 // copied from whisperc++
-void high_pass_filter(std::vector<float> & data, float cutoff, float sample_rate) {
+void high_pass_filter(AudioBuffer &data, float cutoff, float sample_rate) {
     const float rc = 1.0f / (2.0f * M_PI * cutoff);
     const float dt = 1.0f / sample_rate;
     const float alpha = dt / (rc + dt);
@@ -81,29 +97,17 @@ void high_pass_filter(std::vector<float> & data, float cutoff, float sample_rate
     }
 }
 
-// copied from whisperc++ examples
-// TODO port to vector start and end
-
-bool Processor::detectNoise(uint duration)
+bool AudioProcessor::detectNoise()
 {
-    if (m_buffer.duration() < duration) {
-        return false;
-    }
-
-    uint nSamples = duration * WHISPER_SAMPLE_RATE_MS;
-
     // go through the last duration's worth of cycles
-    // take a mean
-
     float energy = 0;
-    for (auto it = m_buffer.constEnd() - (nSamples) ; it  != m_buffer.constEnd() ; it++) {
+    for (auto it = m_sampleBuffer.constBegin() ; it  != m_sampleBuffer.constEnd() ; it++) {
         energy += fabsf(*it);
     }
-    energy /= nSamples;
+    energy /= m_sampleBuffer.count();
 
     Q_EMIT activeVolumeChanged(energy);
-    qDebug() << energy;
-    static float threshold = 0.3;
+    static float threshold = 0.015;
     return energy > threshold;
 }
 
@@ -119,138 +123,142 @@ bool Processor::detectNoise(uint duration)
  * TODO:
  *  - understand energy_all variable in vad_simple in whisper. Seems to make it relative volume compared to buffer?
  *  - add the high pass filter?
+ *
+ *  - port to libfvad?
  */
-void Processor::handleNewData()
+void AudioProcessor::handleNewData()
 {
-    if (m_buffer.duration() < 1000) {
-        return;
-    }
+    high_pass_filter(m_sampleBuffer, 100.0, WHISPER_SAMPLE_RATE);
 
-    // size of sliding window to use to detect audio start / end respectively
-    static const int startVoiceTimer = 1000;
-    static const int endVoicePauseTimer = 2000;
-
-    // DAVE, new plan. Not done yet
-
-    // When not recording
-    // front buffer is less than sample size
-    // front buffer and back buffer. Each take a sample
-    // If low energy - swap buffers and continue
-    // If high energy append backBuffer, frontBuffer as m_buffer and flag as recording
-    // When recording:
-    // still build front buffers, but in handleData we append them to m_buffer now
-    // after N seconds of silence, stop recording
-    // Optimise afterwards
+    const bool noiseInCurrentChunk = detectNoise();
 
     if (!m_recording) {
-        if (detectNoise(startVoiceTimer)) {
-            qDebug() << "start voice";
+        if (noiseInCurrentChunk) {
+            // start with our current chunk
+            m_buffer = m_sampleBuffer;
             m_recording = true;
             Q_EMIT stateChanged();
-        } else {
-            // TODO, keep the last 100ms or so?
-            m_buffer.clear();
-            return;
         }
     } else {
-        // if we're still processing, keep recording till we hit a next break
-        // TODO, something clevererererr
-        if (!detectNoise(endVoicePauseTimer) && !m_processing) {
-            qDebug() << "end voice " << m_buffer.duration();
+        m_buffer.append(m_sampleBuffer);
+
+        if (!noiseInCurrentChunk) {
+            m_silenceTime += s_sampleSizeMs;
+        }
+
+        if (m_silenceTime > s_silenceTime) {
             m_recording = false;
             Q_EMIT stateChanged();
-
-            process();
+            // we could drop the silent time?
+            Q_EMIT audioChunkRecorded(m_buffer);
+            m_silenceTime = 0;
         }
     }
 }
 
 
-qint64 Processor::writeData(const char *data, qint64 len)
+qint64 AudioProcessor::writeData(const char *data, qint64 len)
 {
-    // do stuff with every 1 second of audio
-    static int checkIntervalCount = WHISPER_SAMPLE_RATE;
-
     auto floatData = (float*)data;
-    for (unsigned int i = 0 ; i < len/sizeof(float) ; i++) {
-        m_buffer.append(floatData[i]);
-        if (m_buffer.size() > 1 && (m_buffer.size() % checkIntervalCount) == 0) {
+    for (unsigned int i = 0 ; i < len / sizeof(float) ; i++) {
+        // super inneficient
+        m_sampleBuffer.append(floatData[i]);
+        if (m_sampleBuffer.duration() == s_sampleSizeMs) {
             handleNewData();
+            m_sampleBuffer.clear();
+            m_sampleBuffer.reserve(s_sampleSizeMs * WHISPER_SAMPLE_RATE_MS);
         }
     }
-
     return len;
 }
 
 
-// Future action plan
-// run this in another thread
-// create a thread pool of 1 so we queue in order automagically
-// copying the buffer into the thread
-
-void Processor::process()
+SpeechProcessor::SpeechProcessor(QObject *parent)
+    : QObject(parent)
 {
-    m_processing = true;
-    Q_EMIT stateChanged();
-
-
-    auto futureWatcher = new QFutureWatcher<QString>(this);
-
-    connect(futureWatcher, &QFutureWatcher<int>::finished, this, [this, futureWatcher]() {
-        m_text += futureWatcher->result();
-        Q_EMIT textChanged();
-        m_processing = false;
-        Q_EMIT stateChanged();
-    });
-
-    // this abuses threads somewhat
-    // need a mutex over ctx deletion
-    QFuture<QString> future = QtConcurrent::run(QThreadPool::globalInstance(), [this](AudioBuffer buffer) {
-            QElapsedTimer bench;
-            bench.start();
-            qDebug() << "proces start";
-
-            whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
-
-            wparams.print_progress   = false;
-            wparams.print_special    = false;
-            wparams.print_realtime   = false;
-            wparams.translate        = false;
-            wparams.no_context       = true;
-            wparams.single_segment   = true;
-            wparams.max_tokens       = 32;
-            wparams.language         = "en";
-            wparams.n_threads        = QThread::idealThreadCount();
-            // wparams.audio_ctx        = params.audio_ctx;
-            wparams.speed_up         = true;
-
-            // tokens from the last itteration
-            // wparams.prompt_tokens    = params.no_context ? nullptr : prompt_tokens.data();
-            // wparams.prompt_n_tokens  = params.no_context ? 0       : prompt_tokens.size();
-
-            qDebug() << "processing " << buffer.duration() << "ms of audio";
-
-            if (whisper_full(ctx, wparams, (const float*) buffer.data(), buffer.size()) != 0) {
-            qApp->exit(6);
+    //whisper stuff
+    QByteArray model = "models/ggml-small.en.bin";
+    // TODO verify file exists
+    // TODO language
+    // TODO download the right model automatically
+    m_ctx = whisper_init(model.data());
 }
 
-            QString output;
-            const int n_segments = whisper_full_n_segments(ctx);
-            for (int i = 0; i < n_segments; ++i) {
-        const char * text = whisper_full_get_segment_text(ctx, i);
+SpeechProcessor::~SpeechProcessor()
+{
+    whisper_free(m_ctx);
+}
+
+void SpeechProcessor::enqueue(const AudioBuffer &buffer)
+{
+    QMutexLocker lock(&m_mutex);
+    if (m_pending.count()) {
+        qWarning() << "New buffer arrived whilst processing the old one. Queuing";
+        m_pending.append(buffer);
+        return;
+    } else {
+        m_pending = buffer;
+        QMetaObject::invokeMethod(this, &SpeechProcessor::process, Qt::QueuedConnection);
+    }
+}
+
+void SpeechProcessor::process()
+{
+    m_processing = true;
+    Q_EMIT busyChanged();
+
+    AudioBuffer buffer;
+    {
+        QMutexLocker lock(&m_mutex);
+        buffer = m_pending;
+        m_pending.clear();
+    }
+
+    QElapsedTimer bench;
+    bench.start();
+    qDebug() << "proces start";
+
+    whisper_full_params wparams = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+
+    wparams.print_progress   = false;
+    wparams.print_special    = false;
+    wparams.print_realtime   = false;
+    wparams.translate        = false;
+    wparams.no_context       = true;
+    wparams.single_segment   = true;
+    wparams.max_tokens       = 0;
+    wparams.language         = "en";
+    wparams.n_threads        = QThread::idealThreadCount();
+    // wparams.audio_ctx        = params.audio_ctx;
+    wparams.speed_up         = false; //?
+
+    // tokens from the last itteration
+    // wparams.prompt_tokens    = params.no_context ? nullptr : prompt_tokens.data();
+    // wparams.prompt_n_tokens  = params.no_context ? 0       : prompt_tokens.size();
+
+    qDebug() << "processing " << buffer.duration() << "ms of audio";
+
+    if (whisper_full(m_ctx, wparams, (const float*) buffer.data(), buffer.size()) != 0) {
+        qApp->exit(-1);
+    }
+
+    QString output;
+    const int n_segments = whisper_full_n_segments(m_ctx);
+    for (int i = 0; i < n_segments; ++i) {
+        const char * text = whisper_full_get_segment_text(m_ctx, i);
         // TODO we can get blobs with timestamps here
         output += text;
     }
+
     qDebug() << "Done" << bench.elapsed();
-    return output;
-}, m_buffer);
 
-futureWatcher->setFuture(future);
+    Q_EMIT textFound(output);
 
-m_buffer.clear();
+    m_processing = false;
+    Q_EMIT busyChanged();
 }
 
-QString Processor::text() const
+QString AudioProcessor::text() const
 {
     return m_text;
 }

@@ -1,5 +1,6 @@
 /home/david/projects/personal/audiosource/audiosource_autogen/EWIEGA46WW/moc_audiosource.cpp: /home/david/projects/personal/audiosource/audiosource.h \
   /home/david/projects/personal/audiosource/audiosource_autogen/moc_predefs.h \
+  /home/david/projects/personal/audiosource/processor.h \
   /usr/include/asm-generic/errno-base.h \
   /usr/include/asm-generic/errno.h \
   /usr/include/asm/errno.h \
@@ -227,6 +228,8 @@
   /usr/include/locale.h \
   /usr/include/pthread.h \
   /usr/include/qt/QtCore/QByteArray \
+  /usr/include/qt/QtCore/QIODevice \
+  /usr/include/qt/QtCore/QMutex \
   /usr/include/qt/QtCore/QObject \
   /usr/include/qt/QtCore/QScopedPointer \
   /usr/include/qt/QtCore/qabstractitemmodel.h \
@@ -258,6 +261,7 @@
   /usr/include/qt/QtCore/qmap.h \
   /usr/include/qt/QtCore/qmargins.h \
   /usr/include/qt/QtCore/qmetatype.h \
+  /usr/include/qt/QtCore/qmutex.h \
   /usr/include/qt/QtCore/qnamespace.h \
   /usr/include/qt/QtCore/qnumeric.h \
   /usr/include/qt/QtCore/qobject.h \
@@ -285,6 +289,7 @@
   /usr/include/qt/QtCore/qsysinfo.h \
   /usr/include/qt/QtCore/qsystemdetection.h \
   /usr/include/qt/QtCore/qtcore-config.h \
+  /usr/include/qt/QtCore/qtsan_impl.h \
   /usr/include/qt/QtCore/qtypeinfo.h \
   /usr/include/qt/QtCore/qurl.h \
   /usr/include/qt/QtCore/qvariant.h \
@@ -320,6 +325,7 @@
   /usr/include/qt/QtGui/qtransform.h \
   /usr/include/qt/QtGui/qvalidator.h \
   /usr/include/qt/QtGui/qwindowdefs.h \
+  /usr/include/qt/QtMultimedia/QAudioFormat \
   /usr/include/qt/QtMultimedia/QAudioInput \
   /usr/include/qt/QtMultimedia/qaudio.h \
   /usr/include/qt/QtMultimedia/qaudiodeviceinfo.h \

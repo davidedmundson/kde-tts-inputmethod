@@ -1,6 +1,7 @@
 #ifndef AUDIOINPUT_H
 #define AUDIOINPUT_H
 
+#include "processor.h"
 #include <QAudioInput>
 #include <QByteArray>
 #include <QComboBox>
@@ -13,7 +14,7 @@
 #include <QTextEdit>
 #include <QScopedPointer>
 
-class Processor;
+class AudioProcessor;
 
 class InputTest : public QMainWindow
 {
@@ -35,7 +36,7 @@ private:
     QTextEdit *m_textEdit = nullptr;
 
     QScopedPointer<QAudioInput> m_audioInput;
-    Processor* m_textInferrer;
+    AudioProcessor *m_audioProcessor;
 };
 
 #endif // AUDIOINPUT_H

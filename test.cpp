@@ -10,10 +10,10 @@
 int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
-    Processor p;
+    AudioProcessor p;
 
     QAudioDecoder audioDecoder;
-    audioDecoder.setAudioFormat(Processor::requiredFormat());
+    audioDecoder.setAudioFormat(AudioProcessor::requiredFormat());
     audioDecoder.setSourceFilename("/home/david/projects/personal/audiosource/whisper.cpp/samples/jfk.wav");
     qDebug() << audioDecoder.audioFormat();
 
@@ -26,8 +26,8 @@ int main(int argc, char **argv)
     });
 
     QObject::connect(&audioDecoder, &QAudioDecoder::bufferReady, [&p, &audioDecoder]() {
-
         while(audioDecoder.bufferAvailable()) {
+
             // setAudioFomat is a lie! we need to manually change type to F32
             // don't know why.
             // If this test starts changing, get rid of it
@@ -41,7 +41,7 @@ int main(int argc, char **argv)
         }
     });
 
-    QObject::connect(&p, &Processor::textChanged, [&p]() {
+    QObject::connect(&p, &AudioProcessor::textChanged, [&p]() {
         qDebug() << "Text out" << p.text();
     });
 

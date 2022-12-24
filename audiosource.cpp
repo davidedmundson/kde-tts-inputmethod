@@ -66,7 +66,7 @@ void RenderArea::setLevel(qreal value)
 
 InputTest::InputTest()
 {
-    m_textInferrer = new Processor(this);
+    m_audioProcessor = new AudioProcessor(this);
     initializeWindow();
     initializeAudio(QAudioDeviceInfo::defaultInputDevice());
 }
@@ -86,18 +86,18 @@ void InputTest::initializeWindow()
 
 
     auto vuMeter = new RenderArea(this);
-    connect(m_textInferrer, &Processor::activeVolumeChanged, this, [vuMeter](qreal level) {
+    connect(m_audioProcessor, &AudioProcessor::activeVolumeChanged, this, [vuMeter](qreal level) {
         vuMeter->setLevel(level);
     });
     layout->addWidget(vuMeter);
 
     auto stateLabel = new QLabel(this);
-    connect(m_textInferrer, &Processor::stateChanged, this, [stateLabel, this]() {
+    connect(m_audioProcessor, &AudioProcessor::stateChanged, this, [stateLabel, this]() {
         QString text;
-        if (m_textInferrer->recording()) {
+        if (m_audioProcessor->recording()) {
             text += "Recording ";
         }
-        if (m_textInferrer->processing()) {
+        if (m_audioProcessor->processing()) {
             text += "Processing";
         }
         stateLabel->setText(text);
@@ -109,8 +109,8 @@ void InputTest::initializeWindow()
 
     m_textEdit = new QTextEdit(this);
     layout->addWidget(m_textEdit);
-    connect(m_textInferrer, &Processor::textChanged, this, [this]() {
-        m_textEdit->setText(m_textInferrer->text());
+    connect(m_audioProcessor, &AudioProcessor::textChanged, this, [this]() {
+        m_textEdit->setText(m_audioProcessor->text());
     });
 
     window->setLayout(layout);
@@ -122,7 +122,7 @@ void InputTest::initializeWindow()
 
 void InputTest::initializeAudio(const QAudioDeviceInfo &deviceInfo)
 {
-    QAudioFormat format = Processor::requiredFormat();
+    QAudioFormat format = AudioProcessor::requiredFormat();
 
     if (!deviceInfo.isFormatSupported(format)) {
         qWarning() << "Default format not supported - trying to use nearest";
@@ -135,7 +135,7 @@ void InputTest::initializeAudio(const QAudioDeviceInfo &deviceInfo)
         qDebug() << "State changed" << m_audioInput->state();
     });
 
-    m_audioInput->start(m_textInferrer);
+    m_audioInput->start(m_audioProcessor);
 }
 
 void InputTest::deviceChanged(int index)
